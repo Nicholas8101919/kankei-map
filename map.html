@@ -555,29 +555,70 @@ const FIREBASE_CONFIG = {
   databaseURL: "https://altl-97922-default-rtdb.firebaseio.com"
 };
 
-/* ================= 🔒 あいことばロック（ハッシュ方式） =================
-   ソースコードを見ても暗号文しか分からない。答えはSHA-256のハッシュで照合 */
-const AIKOTOBA_HASH = '2d7daf518dcaaf6b5359173b68af326470531e90f5ac7b06beb4e557ae857d94';
-(function() {
+/* ================= 🔐 あいことばロック＋エンドツーエンド暗号化 =================
+   あいことば＝暗号化の鍵。クラウドには暗号文しか置かない。
+   合言葉を知らない限り、誰にも（Googleにも）データは読めない。 */
+const AIKOTOBA_HASH = '4d865e9a888f28ed1e3f6c29429068e752dd78f04f74de89d909b820d84f73e2';
+const PP_STORE = 'aikotoba_pp';
+let cryptoKey = null;
+
+async function sha256hex(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function deriveKey(pp) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pp), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt: new TextEncoder().encode('kankeiMapSalt1'), iterations: 150000, hash:'SHA-256' },
+    base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
+}
+function b64(u8) {
+  let s = ''; const CH = 0x8000;
+  for (let i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+  return btoa(s);
+}
+function ub64(s) {
+  const bin = atob(s); const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+}
+/* オブジェクト→暗号文パック */
+async function encObj(obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, cryptoKey, new TextEncoder().encode(JSON.stringify(obj)));
+  return { e:1, iv: b64(iv), d: b64(new Uint8Array(ct)) };
+}
+/* 暗号文パック→オブジェクト（鍵が違うと例外になる） */
+async function decObj(pack) {
+  const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: ub64(pack.iv) }, cryptoKey, ub64(pack.d));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+/* 鍵の準備ができたら resolve されるPromise（同期はこの後に始まる） */
+const cryptoReady = (async () => {
   const lockEl = document.getElementById('lock');
-  if (localStorage.getItem('aikotobaOK') === '1') { lockEl.remove(); return; }
-  async function tryOpen() {
-    const input = document.getElementById('lockPw').value.trim();
-    let hex = '';
-    try {
-      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
-      hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-    } catch (e) {}
-    if (hex === AIKOTOBA_HASH) {
-      localStorage.setItem('aikotobaOK', '1'); /* 1回入れればこの端末は次から自動 */
-      lockEl.remove();
-    } else {
-      document.getElementById('lockErr').textContent = 'あいことばが違うよ…';
-      document.getElementById('lockPw').value = '';
-    }
+  const saved = localStorage.getItem(PP_STORE);
+  if (saved && (await sha256hex(saved)) === AIKOTOBA_HASH) {
+    cryptoKey = await deriveKey(saved);
+    lockEl.remove();
+    return;
   }
-  document.getElementById('lockBtn').onclick = tryOpen;
-  document.getElementById('lockPw').addEventListener('keydown', e => { if (e.key === 'Enter') tryOpen(); });
+  await new Promise(resolve => {
+    async function tryOpen() {
+      const input = document.getElementById('lockPw').value.trim();
+      if ((await sha256hex(input)) === AIKOTOBA_HASH) {
+        localStorage.setItem(PP_STORE, input); /* この端末は次から自動 */
+        cryptoKey = await deriveKey(input);
+        lockEl.remove();
+        resolve();
+      } else {
+        document.getElementById('lockErr').textContent = 'あいことばが違うよ…';
+        document.getElementById('lockPw').value = '';
+      }
+    }
+    document.getElementById('lockBtn').onclick = tryOpen;
+    document.getElementById('lockPw').addEventListener('keydown', e => { if (e.key === 'Enter') tryOpen(); });
+  });
 })();
 
 /* ================= データ ================= */
@@ -1752,13 +1793,17 @@ let pushTimer = null;
 function pushSoon() {
   if (!syncRef || applyingRemote) return;
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => {
+  pushTimer = setTimeout(async () => {
     const json = JSON.stringify(syncData());
     if (json === lastPushed) return;
     lastPushed = json;
-    syncRef.set(JSON.parse(json))
-      .then(() => { syncBtn.textContent = '🌐 同期:ON'; })
-      .catch(() => { syncBtn.textContent = '🌐 同期:エラー'; });
+    try {
+      const pack = await encObj(JSON.parse(json)); /* 🔐 暗号化してからクラウドへ */
+      await syncRef.set(pack);
+      syncBtn.textContent = '🌐 同期:ON🔐';
+    } catch (e) {
+      syncBtn.textContent = '🌐 同期:エラー';
+    }
   }, 700);
 }
 
@@ -1805,8 +1850,13 @@ function initSync() {
     initChat();
     let firstSync = true;
 
-    syncRef.on('value', snap => {
-      const remote = snap.val();
+    syncRef.on('value', async snap => {
+      let remote = snap.val();
+      /* 🔐 暗号文パックなら復号（鍵が違うと読めない） */
+      if (remote && remote.e === 1) {
+        try { remote = await decObj(remote); }
+        catch (e) { syncBtn.textContent = '🌐 同期:鍵が違う…'; return; }
+      }
       if (!remote || !Array.isArray(remote.people)) {
         /* クラウドが空 → 今の手元データをアップ */
         firstSync = false;
@@ -1846,7 +1896,7 @@ function initSync() {
       if (wasFirst) pushSoon(); /* 合体結果をクラウドにも反映 */
       syncPred(); render();
       if (panel.classList.contains('open') && selectedId && person(selectedId)) openPanel(selectedId);
-      syncBtn.textContent = '🌐 同期:ON';
+      syncBtn.textContent = '🌐 同期:ON🔐';
     }, () => { syncBtn.textContent = '🌐 同期:エラー'; });
   } catch(e) {
     syncBtn.textContent = '🌐 同期:エラー';
@@ -1962,8 +2012,13 @@ function initChat() {
       chatTextIn.focus();
     }
   };
-  chatRef.limitToLast(100).on('child_added', snap => {
-    const m = snap.val();
+  chatRef.limitToLast(100).on('child_added', async snap => {
+    let m = snap.val();
+    /* 🔐 暗号化メッセージなら復号 */
+    if (m && m.e === 1) {
+      try { m = Object.assign({}, await decObj(m), { ts: m.ts }); }
+      catch (e) { return; } /* 鍵が違うメッセージは表示しない */
+    }
     if (!m || !m.t) return;
     latestTs = Math.max(latestTs, m.ts || 0);
     const own = m.n === myName();
@@ -1988,7 +2043,11 @@ function initChat() {
     if (!name) { toast('なまえを入れてね！'); chatNameIn.focus(); return; }
     if (!text) return;
     if (name !== myName()) { localStorage.setItem('chatName', name); goOnline(); }
-    chatRef.push({ n:name, t:text, ts:Date.now() });
+    /* 🔐 メッセージも暗号化して送信（tsだけ並び順・既読用に外に残す） */
+    encObj({ n:name, t:text, ts:Date.now() }).then(pack => {
+      pack.ts = Date.now();
+      chatRef.push(pack);
+    });
     chatTextIn.value = '';
     chatTextIn.focus();
   }
@@ -1999,7 +2058,8 @@ function initChat() {
 /* ================= 起動 ================= */
 render(); // v2
 if (state.view) applyView(); else fitView();
-initSync();
+/* 🔐 あいことば入力（＝鍵の準備）が済んでから同期スタート */
+cryptoReady.then(() => initSync());
 </script>
 
 </body>
