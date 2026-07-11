@@ -773,6 +773,22 @@ function restoreYuusei() {
       if ((yu[k] == null || yu[k] === '') && srcYu[k] !== '' && srcYu[k] != null) yu[k] = srcYu[k];
     });
   }
+  /* 線も復元：ゆうせいの線が1本もなければバックアップから戻す */
+  const hasRel = state.relations.some(r => r.p1 === 'boy9' || r.p2 === 'boy9');
+  if (!hasRel) {
+    (DEFAULT_BACKUP.relations || []).forEach(r => {
+      if (r.p1 !== 'boy9' && r.p2 !== 'boy9') return;
+      if (state.relations.some(q => q.id === r.id)) return;
+      const fixedType = (r.type === 'common' || r.type === 'group') ? 'talk' : r.type;
+      /* 男女混合の空間に復元 */
+      state.relations.push(Object.assign({}, r, { space: 'all', type: fixedType }));
+      /* 相手が男子なら男子空間にもコピー */
+      const other = state.people.find(q => q.id === (r.p1 === 'boy9' ? r.p2 : r.p1));
+      if (other && other.gender === 'boy') {
+        state.relations.push(Object.assign({}, r, { id: r.id + '_boyfix', space: 'boy', type: fixedType }));
+      }
+    });
+  }
 }
 restoreYuusei();
 /* 空間への呼び出しリスト（女子空間に男子を出す…など） */
