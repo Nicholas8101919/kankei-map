@@ -1832,6 +1832,7 @@ function pushSoon() {
       const pack = await encObj(JSON.parse(json)); /* 🔐 暗号化してからクラウドへ */
       await syncRef.set(pack);
       syncBtn.textContent = '🌐 同期:ON🔐';
+      try { localStorage.setItem('e2eSeen', '1'); } catch (_) {}
     } catch (e) {
       syncBtn.textContent = '🌐 同期:エラー';
     }
@@ -1885,8 +1886,15 @@ function initSync() {
       let remote = snap.val();
       /* 🔐 暗号文パックなら復号（鍵が違うと読めない） */
       if (remote && remote.e === 1) {
-        try { remote = await decObj(remote); }
+        try {
+          remote = await decObj(remote);
+          try { localStorage.setItem('e2eSeen', '1'); } catch (_) {}
+        }
         catch (e) { syncBtn.textContent = '🌐 同期:鍵が違う…'; return; }
+      } else if (remote && localStorage.getItem('e2eSeen') === '1') {
+        /* 一度暗号化を見た後に平文が来た＝旧バージョンの端末が上書きしてきた → 無視して巻き戻りを防ぐ */
+        syncBtn.textContent = '🌐 同期:ON🔐（旧端末を無視中）';
+        return;
       }
       if (!remote || !Array.isArray(remote.people)) {
         /* クラウドが空 → 今の手元データをアップ */
