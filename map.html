@@ -760,6 +760,20 @@ if (!state.settings.spaceCopy1) {
   state.relations.push(...copies);
   state.settings.spaceCopy1 = true; /* settingsは同期されるので他の端末で二重コピーされない */
 }
+/* ゆうせい(boy9)の消えた情報をバックアップから自動復元（空欄だけ埋める・上書きしない） */
+if (typeof DEFAULT_BACKUP !== 'undefined') {
+  const srcYu = (DEFAULT_BACKUP.people || []).find(q => q.id === 'boy9');
+  if (srcYu) {
+    const yu = state.people.find(q => q.id === 'boy9');
+    if (!yu) {
+      state.people.push(JSON.parse(JSON.stringify(srcYu)));
+    } else {
+      Object.keys(srcYu).forEach(k => {
+        if ((yu[k] == null || yu[k] === '') && srcYu[k] !== '' && srcYu[k] != null) yu[k] = srcYu[k];
+      });
+    }
+  }
+}
 /* 空間への呼び出しリスト（女子空間に男子を出す…など） */
 if (!state.spaceExtra) state.spaceExtra = { girl:[], boy:[] };
 /* カルテ用の新項目（無い人には空欄を用意・学年はデフォ中3） */
