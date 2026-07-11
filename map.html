@@ -17,6 +17,27 @@
     font-family:"Hiragino Maru Gothic ProN","Yu Gothic","Meiryo",sans-serif;
     background:var(--bg1); color:#eee;
   }
+  /* 🔒 あいことばロック */
+  #lock {
+    position:fixed; inset:0; z-index:999;
+    background:linear-gradient(135deg,#14151f,#1d1b30 60%,#241d33);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; padding:24px; text-align:center;
+  }
+  #lock h2 { color:#ffd8e6; font-size:1.3rem; letter-spacing:0.1em; }
+  #lock p { color:#8a82b0; font-size:0.85rem; }
+  #lock input {
+    font-size:1.1rem; padding:12px 18px; border-radius:999px;
+    border:2px solid #8f7bff; background:rgba(255,255,255,0.08);
+    color:#fff; outline:none; text-align:center; width:min(260px,80vw);
+    font-family:inherit;
+  }
+  #lock button {
+    font-size:1rem; padding:12px 36px; border:none; border-radius:999px;
+    background:linear-gradient(90deg,#ff6fa5,#8f7bff); color:#fff;
+    font-weight:bold; cursor:pointer; font-family:inherit;
+  }
+  #lock .err { color:#ff7a9a; font-size:0.85rem; min-height:1.2em; }
   /* ===== ボード（全画面） ===== */
   #board {
     position:fixed; inset:0; overflow:hidden; touch-action:none;
@@ -429,6 +450,14 @@
 </head>
 <body>
 
+<div id="lock">
+  <h2>🔒 関係マップボード</h2>
+  <p>ここはメンバー限定。あいことばを入れてね</p>
+  <input type="password" id="lockPw" placeholder="あいことば" autocomplete="off">
+  <button id="lockBtn">ひらく 🕵️</button>
+  <div class="err" id="lockErr"></div>
+</div>
+
 <div id="board">
   <div id="world">
     <svg id="wires"></svg>
@@ -525,6 +554,24 @@
 const FIREBASE_CONFIG = {
   databaseURL: "https://altl-97922-default-rtdb.firebaseio.com"
 };
+
+/* ================= 🔒 あいことばロック ================= */
+const AIKOTOBA = 'しんつ';
+(function() {
+  const lockEl = document.getElementById('lock');
+  if (localStorage.getItem('aikotobaOK') === '1') { lockEl.remove(); return; }
+  const tryOpen = () => {
+    if (document.getElementById('lockPw').value.trim() === AIKOTOBA) {
+      localStorage.setItem('aikotobaOK', '1'); /* 1回入れればこの端末は次から自動 */
+      lockEl.remove();
+    } else {
+      document.getElementById('lockErr').textContent = 'あいことばが違うよ…';
+      document.getElementById('lockPw').value = '';
+    }
+  };
+  document.getElementById('lockBtn').onclick = tryOpen;
+  document.getElementById('lockPw').addEventListener('keydown', e => { if (e.key === 'Enter') tryOpen(); });
+})();
 
 /* ================= データ ================= */
 const LS = 'kankeiBoard_v2';
