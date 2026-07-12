@@ -984,8 +984,26 @@ const inFocusGroup = p => {
     ((r.p1 === focusId && r.p2 === p.id) || (r.p2 === focusId && r.p1 === p.id)));
 };
 
-/* 空間ごとの座標：男女混合=x,y ／ 女子空間=gx,gy ／ 男子空間=bx,by */
+/* 📥で呼び出された人かどうか（呼び出された人だけ自由に動かせる） */
+function isCalled(p) {
+  return genderView !== 'all' && (state.spaceExtra[genderView] || []).includes(p.id);
+}
+/* いまの空間で円に並ぶメンバー */
+function circleMembers() {
+  return state.people.filter(isVisible).filter(p => !isCalled(p));
+}
+/* 空間ごとの座標：基本メンバーはきれいな円に自動配置（固定）、呼び出した人だけ自由に動ける */
 function getXY(p) {
+  if (!isCalled(p)) {
+    const members = circleMembers();
+    const i = members.findIndex(q => q.id === p.id);
+    if (i >= 0) {
+      const n = Math.max(members.length, 1);
+      const R = Math.max(240, 40 + n * 36);
+      const ang = (i / n) * Math.PI * 2 - Math.PI / 2;
+      return [600 + R * Math.cos(ang), 500 + R * Math.sin(ang)];
+    }
+  }
   if (genderView === 'girl') {
     if (p.gx == null) { p.gx = p.x; p.gy = p.y; }
     return [p.gx, p.gy];
@@ -1101,6 +1119,7 @@ function attachNode(el, p, linker) {
         moved = true; clearTimeout(lpTimer);
       }
       if (!moved || lpFired) return;
+      if (!isCalled(p)) return; /* 円のメンバーは固定（動かせるのは📥で呼び出した人だけ） */
       const w = toWorld(ev.clientX, ev.clientY);
       setXY(p, w.x - offX, w.y - offY);
       const [nx, ny] = getXY(p);
