@@ -2,10 +2,91 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="0; url=./map.html">
-<title>関係マップボード 🕵️</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROJECT : MIRROR</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
 </head>
 <body>
-<p>ロード中… 自動で移動しないときは <a href="./map.html">ここをタップ</a></p>
+
+<!-- ========== ロビー ========== -->
+<div id="lobby">
+  <div class="lobby-box">
+    <h1 class="logo">PROJECT<span>:</span>MIRROR</h1>
+    <p class="tagline">同じ場所。違う時間。二人でしか解けない。</p>
+
+    <div id="lobby-menu">
+      <button id="btn-create" class="btn primary">ルームを作成(あなた = <b>過去</b>)</button>
+      <div class="divider"><span>または</span></div>
+      <input id="input-room" type="text" placeholder="ルームコードを入力" maxlength="8" autocomplete="off">
+      <button id="btn-join" class="btn">参加する(あなた = <b>未来</b>)</button>
+    </div>
+
+    <div id="lobby-wait" class="hidden">
+      <div class="spinner"></div>
+      <p id="wait-msg">ルームを作成中...</p>
+      <div id="share-area" class="hidden">
+        <p class="small">この URL を相棒に送ってください:</p>
+        <div class="share-row">
+          <input id="share-url" type="text" readonly>
+          <button id="btn-copy" class="btn small-btn">コピー</button>
+        </div>
+        <p class="small dim">相棒が参加すると自動で開始します</p>
+      </div>
+    </div>
+
+    <p id="lobby-error" class="error hidden"></p>
+  </div>
+</div>
+
+<!-- ========== ゲーム ========== -->
+<div id="game" class="hidden">
+  <canvas id="canvas3d"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="era-badge"></div>
+    <div id="objective">
+      <div class="obj-title">OBJECTIVE</div>
+      <div id="obj-text"></div>
+    </div>
+    <div id="crosshair">+</div>
+    <div id="interact-hint" class="hidden"></div>
+    <div id="partner-status">
+      <span class="dot"></span><span id="partner-text">相棒: 接続中</span>
+    </div>
+    <div id="controls-help">
+      WASD 移動 / マウス 視点 / SPACE ジャンプ / E 調べる / Q ピン / クリックで視点操作開始
+    </div>
+    <div id="event-log"></div>
+  </div>
+
+  <!-- タイムシフト演出 -->
+  <div id="timeshift-flash"></div>
+  <div id="timeshift-text" class="hidden">TIME SHIFT<span id="timeshift-sub"></span></div>
+
+  <!-- クリア画面 -->
+  <div id="clear-screen" class="hidden">
+    <h1>MISSION COMPLETE</h1>
+    <p>二人は違う時間から、同じ扉を開けた。</p>
+    <p class="small dim">Phase 1 デモ クリア</p>
+  </div>
+
+  <!-- 切断画面 -->
+  <div id="disconnect-screen" class="hidden">
+    <h1>接続が切れました</h1>
+    <p>相棒との接続が失われました。ページを再読み込みしてください。</p>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
 </body>
 </html>
